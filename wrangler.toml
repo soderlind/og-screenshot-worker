@@ -1,0 +1,15 @@
+name = "og-screenshot"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[browser]
+binding = "BROWSER"
+
+[[kv_namespaces]]
+binding = "CACHE"
+id = "your-kv-namespace-id"
+
+[[routes]]
+pattern = "og.soderlind.no/*"
+zone_name = "soderlind.no"
