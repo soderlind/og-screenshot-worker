@@ -208,4 +208,4 @@ Browser Rendering is included in Workers Paid plan:
 - First 1,000 browser sessions/month free
 - $0.02 per additional session
 
-With 7-day caching, typical documentation sites stay well within free tier.
+With 7-day caching, typical documentation sites stay well within $5 tier.
