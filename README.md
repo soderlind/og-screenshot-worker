@@ -3,8 +3,6 @@
 
 Generate dynamic Open Graph images using Cloudflare Browser Rendering.
 
-📦 [View source on GitHub](https://github.com/soderlind/og-screenshot-worker)
-
 This Cloudflare Worker takes live screenshots of pages on [soderlind.no](https://soderlind.no) and serves them as OG images for social media previews.
 
 [How It Works](#how-it-works) · [Setup](#setup) · [Configuration](#configuration) · [Usage](#usage) · [Cache Warmup](#cache-warmup)
