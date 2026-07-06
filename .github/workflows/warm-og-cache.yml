@@ -1,0 +1,30 @@
+name: Warm OG Image Cache
+
+on:
+  schedule:
+    - cron: '0 6 * * 0'   # Weekly on Sunday at 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  warm-cache:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch sitemap and warm OG cache
+        run: |
+          echo "Fetching sitemap index from soderlind.no..."
+
+          # Fetch sitemap index and get sub-sitemap URL
+          SITEMAP_URL=$(curl -s https://soderlind.no/sitemap.xml | grep -o '<loc>[^<]*</loc>' | sed 's/<[^>]*>//g' | grep 'sitemap-' | head -1)
+          echo "Processing $SITEMAP_URL..."
+
+          # Fetch sub-sitemap and extract page URLs, warm each OG image
+          curl -s "$SITEMAP_URL" | \
+            grep -o '<loc>https://soderlind\.no/[^<]*</loc>' | \
+            sed 's/<loc>https:\/\/soderlind\.no\///; s/<\/loc>//; s/\/$//' | \
+            while read slug; do
+              [ -z "$slug" ] && slug="index"
+              result=$(curl -s -o /dev/null -w "%{http_code}" "https://og.soderlind.no/${slug}.png")
+              echo "$result $slug"
+            done
+
+          echo "Cache warming complete!"
