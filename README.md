@@ -117,6 +117,9 @@ zone_name = "soderlind.no"
 | `CACHE` | KV Namespace | Screenshot cache storage |
 
 ---
+## Source code
+
+Source code is available at https://github.com/soderlind/og-screenshot-worker
 
 ## Usage
 
@@ -214,8 +217,6 @@ Browser Rendering is included in Workers Paid plan:
 
 With 7-day caching, typical documentation sites stay well within $5 tier.
 
-## Source code
 
-Source code is available at https://github.com/soderlind/og-screenshot-worker
 
 
