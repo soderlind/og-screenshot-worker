@@ -13,22 +13,27 @@ This Cloudflare Worker takes live screenshots of pages on [soderlind.no](https:/
 
 ## How It Works
 
-When someone shares a link to `soderlind.no/plugins/wp-loupe/`, social platforms fetch `https://og.soderlind.no/plugins/wp-loupe.png`. The worker:
+When someone shares a link to `soderlind.no/plugins/wp-loupe/`, social platforms fetch `https://og.soderlind.no/plugins/wp-loupe.png`. The worker caches on two tiers and only renders on a full miss:
 
-1. **Checks KV cache** — Returns cached screenshot if available
-2. **Launches headless browser** — Uses Cloudflare Browser Rendering
-3. **Takes screenshot** — Captures the page at 1200×630 pixels (OG standard)
-4. **Caches result** — Stores in KV for 7 days
-5. **Returns PNG** — Serves the image with proper headers
+1. **Edge cache (Cache API)** — Returns the image from the colo-local edge cache if present (fastest, no KV read)
+2. **KV cache** — On an edge miss, returns the screenshot from KV (durable, cross-colo) and warms the edge cache
+3. **Launches headless browser** — On a full miss, uses Cloudflare Browser Rendering
+4. **Takes screenshot** — Captures the page at 1200×630 pixels (OG standard)
+5. **Populates both caches** — Stores in KV for 7 days and in the edge cache (non-blocking, via `waitUntil`)
+6. **Returns PNG** — Serves the image with proper headers
 
 ```
 Request: https://og.soderlind.no/plugins/wp-loupe.png
          ↓
+Edge cache (Cache API) hit? → return
+         ↓ miss
+KV cache hit? → warm edge → return
+         ↓ miss
 Worker extracts slug: "plugins/wp-loupe"
          ↓
 Navigates to: https://soderlind.no/plugins/wp-loupe/
          ↓
-Takes screenshot → Caches → Returns PNG
+Takes screenshot → stores in KV + edge → returns PNG
 ```
 
 ---
@@ -133,8 +138,8 @@ https://og.soderlind.no/{slug}.png
 
 ### Cache Headers
 
-- `X-Cache: HIT` — Served from KV cache
-- `X-Cache: MISS` — Fresh screenshot generated
+- `X-Cache: HIT` — Served from cache (edge Cache API or KV). Cloudflare's `cf-cache-status` distinguishes an edge `HIT` from a `MISS` that was served by the worker from KV.
+- `X-Cache: MISS` — Fresh screenshot generated, then written to both KV and the edge cache.
 
 ### Testing
 

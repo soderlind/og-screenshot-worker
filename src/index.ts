@@ -11,9 +11,9 @@ const HEIGHT = 630;
 const CACHE_TTL = 60 * 60 * 24 * 7; // 7 days
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
-    
+
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, {
@@ -28,16 +28,29 @@ export default {
     const slug = url.pathname.replace(/^\/|\.png$/g, '') || 'index';
     const cacheKey = `og:${slug}`;
 
-    // Check cache first
+    // 1. Edge cache (Cloudflare Cache API) — fastest, colo-local, no KV read.
+    const cache = caches.default;
+    const cacheRequest = new Request(url.toString(), { method: 'GET' });
+    const edgeHit = await cache.match(cacheRequest);
+    if (edgeHit) {
+      return edgeHit;
+    }
+
+    const cacheHeaders = {
+      'Content-Type': 'image/png',
+      'Cache-Control': 'public, max-age=86400',
+      'Access-Control-Allow-Origin': '*',
+    };
+
+    // 2. Workers KV — durable, cross-colo store.
     const cached = await env.CACHE.get(cacheKey, 'arrayBuffer');
     if (cached) {
-      return new Response(cached, {
-        headers: {
-          'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=86400',
-          'X-Cache': 'HIT',
-        },
+      const response = new Response(cached, {
+        headers: { ...cacheHeaders, 'X-Cache': 'HIT' },
       });
+      // Warm the edge cache for subsequent requests in this colo.
+      ctx.waitUntil(cache.put(cacheRequest, response.clone()));
+      return response;
     }
 
     try {
@@ -55,19 +68,18 @@ export default {
       const screenshot = await page.screenshot({ type: 'png' });
       await browser.close();
 
-      // Store in cache
-      await env.CACHE.put(cacheKey, screenshot, { expirationTtl: CACHE_TTL });
-
-      return new Response(screenshot, {
-        headers: {
-          'Content-Type': 'image/png',
-          'Cache-Control': 'public, max-age=86400',
-          'X-Cache': 'MISS',
-        },
+      const response = new Response(screenshot, {
+        headers: { ...cacheHeaders, 'X-Cache': 'MISS' },
       });
+
+      // 3. Populate both caches without blocking the response.
+      ctx.waitUntil(env.CACHE.put(cacheKey, screenshot, { expirationTtl: CACHE_TTL }));
+      ctx.waitUntil(cache.put(cacheRequest, response.clone()));
+
+      return response;
     } catch (error) {
       console.error('Screenshot failed:', error);
-      // Fallback to existing SVG-based OG image
+      // Fallback to existing SVG-based OG image (never cached at the edge)
       const fallbackUrl = `${SITE}/og/${slug}.png`;
       return fetch(fallbackUrl);
     }
