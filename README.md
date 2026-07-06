@@ -22,18 +22,17 @@ When someone shares a link to `soderlind.no/plugins/wp-loupe/`, social platforms
 5. **Populates both caches** — Stores in KV for 7 days and in the edge cache (non-blocking, via `waitUntil`)
 6. **Returns PNG** — Serves the image with proper headers
 
-```
-Request: https://og.soderlind.no/plugins/wp-loupe.png
-         ↓
-Edge cache (Cache API) hit? → return
-         ↓ miss
-KV cache hit? → warm edge → return
-         ↓ miss
-Worker extracts slug: "plugins/wp-loupe"
-         ↓
-Navigates to: https://soderlind.no/plugins/wp-loupe/
-         ↓
-Takes screenshot → stores in KV + edge → returns PNG
+```mermaid
+flowchart TD
+    A["Request: https://og.soderlind.no/plugins/wp-loupe.png"] --> B{Edge cache<br/>Cache API hit?}
+    B -->|hit| R([Return PNG])
+    B -->|miss| C{KV cache hit?}
+    C -->|hit| D[Warm edge cache] --> R
+    C -->|miss| E["Extract slug: plugins/wp-loupe"]
+    E --> F["Navigate to https://soderlind.no/plugins/wp-loupe/"]
+    F --> G[Take screenshot]
+    G --> H[Store in KV + edge cache]
+    H --> R
 ```
 
 ---
