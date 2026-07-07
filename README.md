@@ -23,16 +23,35 @@ When someone shares a link to `soderlind.no/plugins/wp-loupe/`, social platforms
 6. **Returns PNG** — Serves the image with proper headers
 
 ```mermaid
-flowchart TD
-    A["Request: https://og.soderlind.no/plugins/wp-loupe.png"] --> B{Edge cache<br/>Cache API hit?}
-    B -->|hit| R([Return PNG])
-    B -->|miss| C{KV cache hit?}
-    C -->|hit| D[Warm edge cache] --> R
-    C -->|miss| E["Extract slug: plugins/wp-loupe"]
-    E --> F["Navigate to https://soderlind.no/plugins/wp-loupe/"]
-    F --> G[Take screenshot]
-    G --> H[Store in KV + edge cache]
-    H --> R
+sequenceDiagram
+    participant Client as Social platform
+    participant Worker
+    participant Edge as Edge cache (Cache API)
+    participant KV as KV cache
+    participant Browser as Browser Rendering
+    participant Site as soderlind.no
+
+    Client->>Worker: GET /plugins/wp-loupe.png
+    Worker->>Edge: Lookup
+    alt Edge hit
+        Edge-->>Worker: PNG
+        Worker-->>Client: Return PNG
+    else Edge miss
+        Worker->>KV: Lookup
+        alt KV hit
+            KV-->>Worker: PNG
+            Worker->>Edge: Warm edge cache
+            Worker-->>Client: Return PNG
+        else Full miss
+            Worker->>Browser: Launch headless browser
+            Browser->>Site: Navigate to /plugins/wp-loupe/
+            Site-->>Browser: Page
+            Browser-->>Worker: Screenshot (1200×630)
+            Worker->>KV: Store (7 days)
+            Worker->>Edge: Store (waitUntil)
+            Worker-->>Client: Return PNG
+        end
+    end
 ```
 
 ---
