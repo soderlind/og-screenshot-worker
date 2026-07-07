@@ -112,9 +112,7 @@ Source code is available at [GitHub](https://github.com/soderlind/og-screenshot-
 | `CACHE` | KV Namespace | Screenshot cache storage |
 
 ---
-## Source code
 
-Source code is available at https://github.com/soderlind/og-screenshot-worker
 
 ## Usage
 
