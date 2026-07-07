@@ -169,7 +169,7 @@ https://og.soderlind.no/{slug}.png
 curl -I https://og.soderlind.no/about.png
 
 # Verify cache hit on second request
-curl -I https://og.soderlind.no/about.png | grep X-Cache
+curl -I https://og.soderlind.no/about.png | grep -i X-Cache
 ```
 
 ---
