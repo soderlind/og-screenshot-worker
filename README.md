@@ -98,6 +98,12 @@ pattern = "og.soderlind.no/*"
 zone_name = "soderlind.no"
 ```
 
+### `src/index.ts`
+
+`src/index.ts` contains the worker code that handles requests, checks caches, and generates screenshots. It uses the Cloudflare Browser Rendering API to take screenshots of pages and serves them as PNG images.
+
+Source code is available at [GitHub](https://github.com/soderlind/og-screenshot-worker/blob/main/src/index.ts).
+
 ### Environment Variables
 
 | Binding | Type | Description |
