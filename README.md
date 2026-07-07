@@ -22,37 +22,7 @@ When someone shares a link to `soderlind.no/plugins/wp-loupe/`, social platforms
 5. **Populates both caches** — Stores in KV for 7 days and in the edge cache (non-blocking, via `waitUntil`)
 6. **Returns PNG** — Serves the image with proper headers
 
-```mermaid
-sequenceDiagram
-    participant Client as Social platform
-    participant Worker
-    participant Edge as Edge cache (Cache API)
-    participant KV as KV cache
-    participant Browser as Browser Rendering
-    participant Site as soderlind.no
 
-    Client->>Worker: GET /plugins/wp-loupe.png
-    Worker->>Edge: Lookup
-    alt Edge hit
-        Edge-->>Worker: PNG
-        Worker-->>Client: Return PNG
-    else Edge miss
-        Worker->>KV: Lookup
-        alt KV hit
-            KV-->>Worker: PNG
-            Worker->>Edge: Warm edge cache
-            Worker-->>Client: Return PNG
-        else Full miss
-            Worker->>Browser: Launch headless browser
-            Browser->>Site: Navigate to /plugins/wp-loupe/
-            Site-->>Browser: Page
-            Browser-->>Worker: Screenshot (1200×630)
-            Worker->>KV: Store (7 days)
-            Worker->>Edge: Store (waitUntil)
-            Worker-->>Client: Return PNG
-        end
-    end
-```
 
 ---
 
