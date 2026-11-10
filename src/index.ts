@@ -1,124 +1,86 @@
+import { loadSiteProfile, SiteProfileError, type SiteEnv, type SiteProfile } from './site-profile';
+import { createScreenshotStore } from './screenshot-store';
+import { renderScreenshot, withBrowser, type Browser } from './render';
+import { collectSlugs, warmCache } from './warmup';
 import puppeteer from '@cloudflare/puppeteer';
 
-interface Env {
+interface Env extends SiteEnv {
   BROWSER: Fetcher;
   CACHE: KVNamespace;
 }
 
-const SITE = 'https://soderlind.no';
-const WIDTH = 1200;
-const HEIGHT = 630;
-const CACHE_TTL = 60 * 60 * 24 * 7; // 7 days
-const IMAGE_HEADERS = {
-  'Content-Type': 'image/png',
-  'Cache-Control': 'public, max-age=86400',
-  'Access-Control-Allow-Origin': '*',
-};
+const CORS = { 'Access-Control-Allow-Origin': '*' };
 
-function parseSlug(pathname: string): string | null {
-  const withoutExt = pathname.replace(/\.png$/i, '');
-  const trimmed = withoutExt.replace(/^\/+/g, '').replace(/\/+$/g, '');
-  const normalized = trimmed.replace(/\/+/g, '/');
-  const slug = normalized || 'index';
+function textResponse(body: string, status: number): Response {
+  return new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...CORS } });
+}
 
-  // Allow letters, numbers, underscore, dash and path separators only.
-  if (!/^[a-z0-9][a-z0-9/_-]*$/i.test(slug)) {
-    return null;
+async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, profile: SiteProfile): Promise<Response> {
+  const url = new URL(request.url);
+  const slug = profile.slugFromRequestPath(url.pathname);
+  if (!slug) {
+    return textResponse('Invalid slug. Expected /path/to/page.png', 400);
   }
 
-  return slug;
-}
-
-function withCacheHeader(response: Response, cacheState: string): Response {
-  const headers = new Headers(response.headers);
-  headers.set('X-Cache', cacheState);
-  return new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
+  const store = createScreenshotStore({
+    profile,
+    kv: env.CACHE,
+    edge: caches.default,
+    waitUntil: (p) => ctx.waitUntil(p),
   });
-}
 
-function imageResponse(body: BodyInit, cacheState: string): Response {
-  return new Response(body, {
-    headers: { ...IMAGE_HEADERS, 'X-Cache': cacheState },
-  });
+  const hit = await store.lookup(slug, url.origin);
+  if (hit) return hit;
+
+  try {
+    const png = await withBrowser(env.BROWSER, (browser) => renderScreenshot(browser, profile, slug));
+    return await store.save(slug, png, url.origin);
+  } catch (error) {
+    console.error('Screenshot failed:', error);
+    // Fallback Image is never cached.
+    const fallbackUrl = profile.fallbackUrl(slug);
+    return fallbackUrl ? fetch(fallbackUrl) : textResponse('Screenshot failed', 502);
+  }
 }
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
-    const url = new URL(request.url);
-
-    // Handle CORS preflight
     if (request.method === 'OPTIONS') {
-      return new Response(null, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-        },
-      });
+      return new Response(null, { headers: { ...CORS, 'Access-Control-Allow-Methods': 'GET' } });
     }
 
-    const slug = parseSlug(url.pathname);
-    if (!slug) {
-      return new Response('Invalid slug. Expected /path/to/page.png', {
-        status: 400,
-        headers: {
-          'Content-Type': 'text/plain; charset=utf-8',
-          'Access-Control-Allow-Origin': '*',
-        },
-      });
-    }
-
-    const cacheKey = `og:${slug}`;
-
-    // 1. Edge cache (Cloudflare Cache API) — fastest, colo-local, no KV read.
-    const cache = caches.default;
-    const cacheRequest = new Request(url.toString(), { method: 'GET' });
-    const edgeHit = await cache.match(cacheRequest);
-    if (edgeHit) {
-      return withCacheHeader(edgeHit, 'HIT-EDGE');
-    }
-
-    // 2. Workers KV — durable, cross-colo store.
-    const cached = await env.CACHE.get(cacheKey, 'arrayBuffer');
-    if (cached) {
-      const response = imageResponse(cached, 'HIT-KV');
-      // Warm the edge cache for subsequent requests in this colo.
-      ctx.waitUntil(cache.put(cacheRequest, response.clone()));
-      return response;
-    }
-
-    let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
+    let profile: SiteProfile;
     try {
-      browser = await puppeteer.launch(env.BROWSER);
-      const page = await browser.newPage();
-      await page.setViewport({ width: WIDTH, height: HEIGHT });
-
-      // Navigate to the actual page
-      const targetUrl = new URL(slug === 'index' ? '/' : `/${slug}/`, SITE).toString();
-      await page.goto(targetUrl, { waitUntil: 'networkidle0', timeout: 15000 });
-
-      // Wait a bit for any animations to settle
-      await new Promise((r) => setTimeout(r, 500));
-
-      const screenshot = await page.screenshot({ type: 'png' });
-      const response = imageResponse(screenshot, 'MISS');
-
-      // 3. Populate both caches without blocking the response.
-      ctx.waitUntil(env.CACHE.put(cacheKey, screenshot, { expirationTtl: CACHE_TTL }));
-      ctx.waitUntil(cache.put(cacheRequest, response.clone()));
-
-      return response;
+      profile = loadSiteProfile(env);
     } catch (error) {
-      console.error('Screenshot failed:', error);
-      // Fallback to existing SVG-based OG image (never cached at the edge)
-      const fallbackUrl = new URL(`/og/${slug}.png`, SITE).toString();
-      return fetch(fallbackUrl);
-    } finally {
-      if (browser) {
-        await browser.close();
+      if (error instanceof SiteProfileError) {
+        console.error('Invalid site configuration:', error.message);
+        return textResponse('Worker is misconfigured', 500);
       }
+      throw error;
+    }
+
+    return handleRequest(request, env, ctx, profile);
+  },
+
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    const profile = loadSiteProfile(env);
+    const store = createScreenshotStore({ profile, kv: env.CACHE, waitUntil: (p) => ctx.waitUntil(p) });
+    const slugs = await collectSlugs(profile, (u) => fetch(u));
+
+    // Launch the browser only if something is actually missing.
+    let browser: Browser | null = null;
+    try {
+      const result = await warmCache(profile, store, slugs, async (slug) => {
+        browser ??= await puppeteer.launch(env.BROWSER);
+        return renderScreenshot(browser, profile, slug);
+      });
+      console.log(
+        `Cache Warmup for ${profile.host}: ${slugs.length} slugs, ${result.rendered.length} rendered, ` +
+          `${result.skipped} already cached, ${result.failed.length} failed`,
+      );
+    } finally {
+      if (browser) await (browser as Browser).close();
     }
   },
 };

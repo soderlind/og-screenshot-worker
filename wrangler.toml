@@ -1,7 +1,19 @@
+# One install = one site. Copy this file per site (or add a [env.<site>] block)
+# and change the values below; no code changes are needed.
 name = "og-screenshot"
 main = "src/index.ts"
 compatibility_date = "2025-01-01"
 compatibility_flags = ["nodejs_compat"]
+
+[vars]
+SITE_ORIGIN = "https://soderlind.no"   # required: the site to screenshot
+PAGE_PATH = "/{slug}/"                 # Slug → page path ("index" always maps to "/")
+FALLBACK_PATH = "/og/{slug}.png"       # optional Fallback Image; remove to return 502 on failure
+# SITEMAP_URL = "https://soderlind.no/sitemap.xml"  # default: SITE_ORIGIN/sitemap.xml
+# VIEWPORT = "1200x630"
+# CACHE_TTL_SECONDS = "604800"         # KV Cache and Edge Cache (7 days)
+# BROWSER_MAX_AGE_SECONDS = "86400"    # browsers / crawlers (1 day)
+# WARMUP_LIMIT = "50"                  # max renders per Cache Warmup run
 
 [browser]
 binding = "BROWSER"
@@ -9,6 +21,9 @@ binding = "BROWSER"
 [[kv_namespaces]]
 binding = "CACHE"
 id = "your-kv-namespace-id"
+
+[triggers]
+crons = ["0 6 * * 0"]                  # Cache Warmup: weekly, Sunday 06:00 UTC
 
 [[routes]]
 pattern = "og.soderlind.no/*"

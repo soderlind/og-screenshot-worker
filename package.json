@@ -3,10 +3,16 @@
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc"
   },
   "devDependencies": {
     "@cloudflare/puppeteer": "^1.0.0",
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "typescript": "^7.0.2",
+    "vitest": "^5.1.0",
     "wrangler": "^4.0.0"
-  }
+  },
+  "version": "1.0.0"
 }
