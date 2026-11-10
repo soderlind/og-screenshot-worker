@@ -6,8 +6,9 @@ type FetchLike = (url: string) => Promise<Response>;
 const MAX_CHILD_SITEMAPS = 50;
 
 function extractLocs(xml: string): string[] {
-  return [...xml.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((m) =>
-    m[1].replace(/&amp;/g, '&'),
+  return [...xml.matchAll(/<loc>\s*(?:<!\[CDATA\[\s*([\s\S]*?)\s*\]\]>|([^<]+?))\s*<\/loc>/g)].map((m) =>
+    // CDATA content is literal; plain text needs entity decoding.
+    m[1] !== undefined ? m[1] : m[2].replace(/&amp;/g, '&'),
   );
 }
 

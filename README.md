@@ -142,7 +142,7 @@ zone_name = "example.com"
 | `FALLBACK_PATH` | unset | Fallback Image path, e.g. `/og/{slug}.png`. Unset returns 502 on failure |
 | `SITEMAP_URL` | `SITE_ORIGIN/sitemap.xml` | Sitemap or sitemap index used by Cache Warmup |
 | `VIEWPORT` | `1200x630` | Screenshot size |
-| `CACHE_TTL_SECONDS` | `604800` | KV Cache and Edge Cache lifetime |
+| `CACHE_TTL_SECONDS` | `604800` | Screenshot lifetime across KV Cache and Edge Cache (min `60`) |
 | `BROWSER_MAX_AGE_SECONDS` | `86400` | `max-age` sent to browsers and crawlers |
 | `WARMUP_LIMIT` | `50` | Max renders per Cache Warmup run |
 

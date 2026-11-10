@@ -13,6 +13,9 @@ describe('loadSiteProfile', () => {
     expect(() => loadSiteProfile({ SITE_ORIGIN: 'https://a.com', PAGE_PATH: '/blog/' })).toThrow(SiteProfileError);
     expect(() => loadSiteProfile({ SITE_ORIGIN: 'https://a.com', VIEWPORT: 'big' })).toThrow(SiteProfileError);
     expect(() => loadSiteProfile({ SITE_ORIGIN: 'https://a.com', CACHE_TTL_SECONDS: '-1' })).toThrow(SiteProfileError);
+    // Workers KV minimum expirationTtl
+    expect(() => loadSiteProfile({ SITE_ORIGIN: 'https://a.com', CACHE_TTL_SECONDS: '59' })).toThrow(SiteProfileError);
+    expect(loadSiteProfile({ SITE_ORIGIN: 'https://a.com', CACHE_TTL_SECONDS: '60' }).cacheTtlSeconds).toBe(60);
   });
 
   it('applies defaults', () => {
@@ -54,6 +57,8 @@ describe('Slug mapping', () => {
     expect(blog.pageUrl('hello')).toBe('https://b.dev/posts/hello.html');
     expect(blog.slugFromPageUrl(blog.pageUrl('hello'))).toBe('hello');
     expect(blog.slugFromPageUrl('https://b.dev/about')).toBeNull();
+    expect(blog.slugFromPageUrl('https://b.dev/posts/feed')).toBeNull();
+    expect(blog.slugFromPageUrl('https://b.dev/posts/feed/')).toBeNull();
   });
 
   it('only builds a Fallback Image URL when configured', () => {

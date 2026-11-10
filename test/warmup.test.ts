@@ -31,6 +31,18 @@ describe('collectSlugs', () => {
     expect(slugs).toEqual(['a']);
   });
 
+  it('reads CDATA-wrapped locations', async () => {
+    const slugs = await collectSlugs(
+      profile,
+      fakeFetch({
+        'https://example.com/sitemap.xml':
+          '<sitemapindex><sitemap><loc><![CDATA[https://example.com/s.xml]]></loc></sitemap></sitemapindex>',
+        'https://example.com/s.xml': '<urlset><url><loc> <![CDATA[ https://example.com/a/?x=1&y=2 ]]> </loc></url></urlset>',
+      }),
+    );
+    expect(slugs).toEqual(['a']);
+  });
+
   it('fails loudly when the sitemap is missing', async () => {
     await expect(collectSlugs(profile, fakeFetch({}))).rejects.toThrow(/404/);
   });

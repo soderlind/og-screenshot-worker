@@ -2,7 +2,7 @@ import type { SiteProfile } from './site-profile';
 
 export type CacheState = 'HIT-EDGE' | 'HIT-KV' | 'MISS';
 
-type KvStore = Pick<KVNamespace, 'get' | 'put'>;
+type KvStore = Pick<KVNamespace, 'get' | 'getWithMetadata' | 'put'>;
 type EdgeCache = Pick<Cache, 'match' | 'put'>;
 
 export interface ScreenshotStoreDeps {
@@ -11,6 +11,12 @@ export interface ScreenshotStoreDeps {
   /** Edge Cache; omitted where no public URL exists (e.g. scheduled warmup). */
   edge?: EdgeCache;
   waitUntil(promise: Promise<unknown>): void;
+  /** Clock in ms; injectable for tests. */
+  now?: () => number;
+}
+
+interface ScreenshotMetadata {
+  renderedAt: number;
 }
 
 export interface ScreenshotStore {
@@ -25,17 +31,17 @@ export interface ScreenshotStore {
   has(slug: string): Promise<boolean>;
 }
 
-export function createScreenshotStore({ profile, kv, edge, waitUntil }: ScreenshotStoreDeps): ScreenshotStore {
+export function createScreenshotStore({ profile, kv, edge, waitUntil, now = Date.now }: ScreenshotStoreDeps): ScreenshotStore {
   // Scope by site host so N installs can share one KV namespace safely.
   const kvKey = (slug: string) => `og:${profile.host}:${slug}`;
   const edgeKey = (slug: string, publicOrigin: string) => new Request(`${publicOrigin}/${slug}.png`, { method: 'GET' });
 
-  const imageResponse = (body: BodyInit, state: CacheState) =>
+  // `freshFor` is the screenshot's remaining lifetime, so no cache keeps it past CACHE_TTL_SECONDS.
+  const imageResponse = (body: BodyInit, state: CacheState, freshFor = profile.cacheTtlSeconds) =>
     new Response(body, {
       headers: {
         'Content-Type': 'image/png',
-        // max-age for browsers/social crawlers; s-maxage keeps the Edge Cache in step with KV.
-        'Cache-Control': `public, max-age=${profile.browserMaxAgeSeconds}, s-maxage=${profile.cacheTtlSeconds}`,
+        'Cache-Control': `public, max-age=${Math.min(profile.browserMaxAgeSeconds, freshFor)}, s-maxage=${freshFor}`,
         'Access-Control-Allow-Origin': '*',
         'X-Cache': state,
       },
@@ -54,18 +60,21 @@ export function createScreenshotStore({ profile, kv, edge, waitUntil }: Screensh
         if (hit) return withState(hit, 'HIT-EDGE');
       }
 
-      const stored = await kv.get(kvKey(slug), 'arrayBuffer');
-      if (!stored) return null;
+      const { value, metadata } = await kv.getWithMetadata<ScreenshotMetadata>(kvKey(slug), 'arrayBuffer');
+      if (!value) return null;
 
-      const response = imageResponse(stored, 'HIT-KV');
-      if (edge && publicOrigin) {
+      const ageSeconds = metadata?.renderedAt ? Math.floor((now() - metadata.renderedAt) / 1000) : 0;
+      const freshFor = Math.max(0, profile.cacheTtlSeconds - ageSeconds);
+      const response = imageResponse(value, 'HIT-KV', freshFor);
+      if (edge && publicOrigin && freshFor > 0) {
         waitUntil(edge.put(edgeKey(slug, publicOrigin), response.clone()));
       }
       return response;
     },
 
     async save(slug, png, publicOrigin) {
-      await kv.put(kvKey(slug), png, { expirationTtl: profile.cacheTtlSeconds });
+      const metadata: ScreenshotMetadata = { renderedAt: now() };
+      await kv.put(kvKey(slug), png, { expirationTtl: profile.cacheTtlSeconds, metadata });
       const response = imageResponse(png, 'MISS');
       if (edge && publicOrigin) {
         waitUntil(edge.put(edgeKey(slug, publicOrigin), response.clone()));

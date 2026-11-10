@@ -51,11 +51,11 @@ function parseTemplate(name: string, value: string): { prefix: string; suffix: s
   return { prefix: parts[0], suffix: parts[1] };
 }
 
-function parsePositiveInt(name: string, value: string | undefined, fallback: number): number {
+function parsePositiveInt(name: string, value: string | undefined, fallback: number, min = 1): number {
   if (value === undefined || value === '') return fallback;
   const n = Number(value);
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new SiteProfileError(`${name} must be a positive integer, got "${value}"`);
+  if (!Number.isInteger(n) || n < min) {
+    throw new SiteProfileError(`${name} must be an integer >= ${min}, got "${value}"`);
   }
   return n;
 }
@@ -90,7 +90,8 @@ export function loadSiteProfile(env: SiteEnv): SiteProfile {
     origin,
     host: originUrl.host,
     viewport: parseViewport(env.VIEWPORT),
-    cacheTtlSeconds: parsePositiveInt('CACHE_TTL_SECONDS', env.CACHE_TTL_SECONDS, 60 * 60 * 24 * 7),
+    // Workers KV rejects expirationTtl below 60 seconds.
+    cacheTtlSeconds: parsePositiveInt('CACHE_TTL_SECONDS', env.CACHE_TTL_SECONDS, 60 * 60 * 24 * 7, 60),
     browserMaxAgeSeconds: parsePositiveInt('BROWSER_MAX_AGE_SECONDS', env.BROWSER_MAX_AGE_SECONDS, 60 * 60 * 24),
     sitemapUrl,
     warmupLimit: parsePositiveInt('WARMUP_LIMIT', env.WARMUP_LIMIT, 50),
@@ -116,8 +117,15 @@ export function loadSiteProfile(env: SiteEnv): SiteProfile {
       if (path === '/' || path === '') return 'index';
       if (!path.startsWith(page.prefix)) return null;
       path = path.slice(page.prefix.length);
-      if (page.suffix && path.endsWith(page.suffix)) {
-        path = path.slice(0, -page.suffix.length);
+      // A trailing "/" in the template is optional in URLs; any other suffix must match.
+      let suffix = page.suffix;
+      if (suffix.endsWith('/')) {
+        suffix = suffix.slice(0, -1);
+        path = path.replace(/\/+$/, '');
+      }
+      if (suffix) {
+        if (!path.endsWith(suffix)) return null;
+        path = path.slice(0, -suffix.length);
       }
       return normalizeSlug(path);
     },
