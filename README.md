@@ -178,6 +178,7 @@ one KV namespace safely.
 | `src/site-profile.ts` | Reads and validates per-install config; owns Slug ↔ URL mapping and Fallback Image URL |
 | `src/screenshot-store.ts` | Edge Cache → KV Cache lookup, write-back, keys, TTLs, `X-Cache` |
 | `src/render.ts` | Browser Rendering screenshot of one Slug |
+| `src/page-check.ts` | Pre-render check that the page still exists |
 | `src/warmup.ts` | Sitemap → Slugs, renders cache misses |
 | `src/index.ts` | `fetch` and `scheduled` handlers wiring the modules |
 
@@ -248,6 +249,11 @@ If the screenshot fails (timeout, browser error), the worker proxies the static
 image at `FALLBACK_PATH` on the site (for example a Satori-generated
 `/og/{slug}.png`). Fallback responses are never cached. Without
 `FALLBACK_PATH`, the worker returns `502`.
+
+Pages that don't exist are never rendered. Before launching a browser, the
+worker sends a `HEAD` request to the page; if the site answers `404` or `410`,
+the worker returns `404` (cached for 5 minutes) without using a browser
+session or the fallback.
 
 ---
 

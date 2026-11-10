@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 1.0.0 predate versioning and are grouped by date.
 
+## [1.0.1] - 2026-11-10
+
+### Fixed
+
+- Requests for pages that don't exist no longer launch a browser or cache a
+  screenshot of the site's 404 page. The worker checks the live page with a
+  `HEAD` request first (falling back to `GET` on 405/501) and returns `404`
+  (cached for 5 minutes) when the site answers 404 or 410. A 404/410 seen
+  by the browser is treated the same way; other error statuses use the
+  Fallback Image.
+
 ## [1.0.0] - 2026-11-10
 
 ### Added
@@ -68,4 +79,5 @@ Entries before 1.0.0 predate versioning and are grouped by date.
 - Initial worker: screenshots site pages with Cloudflare Browser Rendering,
   caches them in Workers KV for 7 days, and falls back to a static OG image.
 
+[1.0.1]: https://github.com/soderlind/og-screenshot-worker/releases/tag/v1.0.1
 [1.0.0]: https://github.com/soderlind/og-screenshot-worker/releases/tag/v1.0.0

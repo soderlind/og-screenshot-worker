@@ -1,5 +1,6 @@
 import puppeteer from '@cloudflare/puppeteer';
 import type { SiteProfile } from './site-profile';
+import { isGone, PageNotFoundError } from './page-check';
 
 export type Browser = Awaited<ReturnType<typeof puppeteer.launch>>;
 
@@ -8,7 +9,10 @@ export async function renderScreenshot(browser: Browser, profile: SiteProfile, s
   const page = await browser.newPage();
   try {
     await page.setViewport(profile.viewport);
-    await page.goto(profile.pageUrl(slug), { waitUntil: 'networkidle0', timeout: 15000 });
+    const url = profile.pageUrl(slug);
+    const response = await page.goto(url, { waitUntil: 'networkidle0', timeout: 15000 });
+    if (response && isGone(response.status())) throw new PageNotFoundError(url);
+    if (response && response.status() >= 400) throw new Error(`Page returned ${response.status()}: ${url}`);
     // Let animations settle.
     await new Promise((r) => setTimeout(r, 500));
     return await page.screenshot({ type: 'png' });

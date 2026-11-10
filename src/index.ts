@@ -2,6 +2,7 @@ import { loadSiteProfile, SiteProfileError, type SiteEnv, type SiteProfile } fro
 import { createScreenshotStore } from './screenshot-store';
 import { renderScreenshot, withBrowser, type Browser } from './render';
 import { collectSlugs, warmCache } from './warmup';
+import { pageExists, PageNotFoundError } from './page-check';
 import puppeteer from '@cloudflare/puppeteer';
 
 interface Env extends SiteEnv {
@@ -11,9 +12,12 @@ interface Env extends SiteEnv {
 
 const CORS = { 'Access-Control-Allow-Origin': '*' };
 
-function textResponse(body: string, status: number): Response {
-  return new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...CORS } });
+function textResponse(body: string, status: number, extra: HeadersInit = {}): Response {
+  return new Response(body, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...CORS, ...extra } });
 }
+
+// Short-lived so a page published later gets its image soon.
+const notFound = () => textResponse('Page not found', 404, { 'Cache-Control': 'public, max-age=300' });
 
 async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, profile: SiteProfile): Promise<Response> {
   const url = new URL(request.url);
@@ -32,10 +36,15 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
   const hit = await store.lookup(slug, url.origin);
   if (hit) return hit;
 
+  if (!(await pageExists(profile.pageUrl(slug), (u, init) => fetch(u, init)))) {
+    return notFound();
+  }
+
   try {
     const png = await withBrowser(env.BROWSER, (browser) => renderScreenshot(browser, profile, slug));
     return await store.save(slug, png, url.origin);
   } catch (error) {
+    if (error instanceof PageNotFoundError) return notFound();
     console.error('Screenshot failed:', error);
     // Fallback Image is never cached.
     const fallbackUrl = profile.fallbackUrl(slug);
