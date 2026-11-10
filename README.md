@@ -119,7 +119,7 @@ binding = "CACHE"
 id = "your-kv-namespace-id"
 
 [triggers]
-crons = ["0 6 * * 0"]
+crons = ["0 6 * * SUN"]
 
 [[routes]]
 pattern = "og.example.com/*"
@@ -160,7 +160,7 @@ name = "og-screenshot-docs"
 vars = { SITE_ORIGIN = "https://docs.example.com" }
 kv_namespaces = [{ binding = "CACHE", id = "..." }]
 browser = { binding = "BROWSER" }
-triggers = { crons = ["0 6 * * 0"] }
+triggers = { crons = ["0 6 * * SUN"] }
 routes = [{ pattern = "og.docs.example.com/*", zone_name = "example.com" }]
 ```
 
@@ -237,7 +237,7 @@ Trigger it locally:
 
 ```bash
 npx wrangler dev --test-scheduled
-curl "http://localhost:8787/__scheduled?cron=0+6+*+*+0"
+curl "http://localhost:8787/__scheduled?cron=0+6+*+*+SUN"
 ```
 
 ---

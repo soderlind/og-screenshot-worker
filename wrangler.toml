@@ -20,10 +20,10 @@ binding = "BROWSER"
 
 [[kv_namespaces]]
 binding = "CACHE"
-id = "your-kv-namespace-id"
+id = "e0845a6454934d0b83074b84db39f196"
 
 [triggers]
-crons = ["0 6 * * 0"]                  # Cache Warmup: weekly, Sunday 06:00 UTC
+crons = ["0 6 * * SUN"]                  # Cache Warmup: weekly, Sunday 06:00 UTC
 
 [[routes]]
 pattern = "og.soderlind.no/*"
