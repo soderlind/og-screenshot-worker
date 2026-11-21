@@ -94,7 +94,7 @@ const ogImage = `https://og.example.com/${ogSlug}.png`;
 ```toml
 name = "og-screenshot"
 main = "src/index.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-03-24"
 compatibility_flags = ["nodejs_compat"]
 
 [browser]
@@ -112,8 +112,9 @@ zone_name = "example.com"
 ### `src/index.ts`
 
 `src/index.ts` contains the worker code that handles requests, checks caches,
-and generates screenshots. It uses the Cloudflare Browser Rendering API to take
-screenshots of pages and serves them as PNG images.
+and generates screenshots. It uses the Browser Run screenshot Quick Action to
+capture pages and serves them as PNG images. The Quick Action requires a
+compatibility date of `2026-03-24` or later.
 
 Source code is available at [GitHub](https://github.com/soderlind/og-screenshot-worker/blob/main/src/index.ts).
 

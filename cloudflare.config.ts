@@ -3,7 +3,7 @@ import { bindings, defineConfig, triggers } from "cf/config";
 export default defineConfig({
 	worker: {
 		name: "og-screenshot",
-		compatibilityDate: "2025-01-01",
+		compatibilityDate: "2026-03-24",
 		compatibilityFlags: [
 			"nodejs_compat",
 		],

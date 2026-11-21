@@ -1,7 +1,5 @@
-import puppeteer from '@cloudflare/puppeteer';
-
 interface Env {
-  BROWSER: Fetcher;
+  BROWSER: BrowserRun;
   CACHE: KVNamespace;
 }
 
@@ -89,20 +87,22 @@ export default {
       return response;
     }
 
-    let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
     try {
-      browser = await puppeteer.launch(env.BROWSER);
-      const page = await browser.newPage();
-      await page.setViewport({ width: WIDTH, height: HEIGHT });
-
       // Navigate to the actual page
       const targetUrl = new URL(slug === 'index' ? '/' : `/${slug}/`, SITE).toString();
-      await page.goto(targetUrl, { waitUntil: 'networkidle0', timeout: 15000 });
+      const screenshotResponse = await env.BROWSER.quickAction('screenshot', {
+        url: targetUrl,
+        viewport: { width: WIDTH, height: HEIGHT },
+        gotoOptions: { waitUntil: 'networkidle0', timeout: 15000 },
+        waitForTimeout: 500,
+      });
 
-      // Wait a bit for any animations to settle
-      await new Promise((r) => setTimeout(r, 500));
+      if (!screenshotResponse.ok) {
+        await screenshotResponse.body?.cancel();
+        throw new Error(`Browser Run screenshot failed with status ${screenshotResponse.status}`);
+      }
 
-      const screenshot = await page.screenshot({ type: 'png' });
+      const screenshot = await screenshotResponse.arrayBuffer();
       const response = imageResponse(screenshot, 'MISS');
 
       // 3. Populate both caches without blocking the response.
@@ -115,10 +115,6 @@ export default {
       // Fallback to existing SVG-based OG image (never cached at the edge)
       const fallbackUrl = new URL(`/og/${slug}.png`, SITE).toString();
       return fetch(fallbackUrl);
-    } finally {
-      if (browser) {
-        await browser.close();
-      }
     }
   },
 };
