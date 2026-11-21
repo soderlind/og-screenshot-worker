@@ -27,7 +27,8 @@ caches on two tiers and only renders on a full miss:
   cache if present (fastest, no KV read)
 2. **KV cache** — On an edge miss, returns the screenshot from KV
   (durable, cross-colo) and warms the edge cache
-3. **Launches headless browser** — On a full miss, uses Cloudflare Browser Rendering
+3. **Checks and renders the page** — On a full miss, checks the page exists,
+  then uses Cloudflare Browser Rendering
 4. **Takes screenshot** — Captures the page at `VIEWPORT` (default 1200×630)
 5. **Populates both caches** — Stores in KV and in the edge cache for
   `CACHE_TTL_SECONDS` (default 7 days)
@@ -124,7 +125,7 @@ binding = "CACHE"
 id = "your-kv-namespace-id"
 
 [triggers]
-crons = ["0 6 * * 0"]
+crons = ["0 6 * * SUN"]
 
 [[routes]]
 pattern = "og.example.com/*"
@@ -138,9 +139,10 @@ zone_name = "example.com"
 | `BROWSER` | Browser | Cloudflare Browser Rendering binding |
 | `CACHE` | KV Namespace | Screenshot cache storage |
 
-On-demand screenshots use the Browser Run screenshot Quick Action, which
-requires a compatibility date of `2026-03-24` or later. Cache Warmup continues
-to reuse a Puppeteer browser session.
+On-demand screenshots use the Browser Run snapshot Quick Action, which
+provides the page status with the screenshot and requires a compatibility date
+of `2026-03-24` or later. The response also includes HTML, which the worker
+discards. Cache Warmup continues to reuse a Puppeteer browser session.
 
 The equivalent `cloudflare.config.ts` must be kept in sync with `wrangler.toml`
 when changing site variables, bindings, routes, or the warmup schedule.
@@ -172,7 +174,7 @@ name = "og-screenshot-docs"
 vars = { SITE_ORIGIN = "https://docs.example.com" }
 kv_namespaces = [{ binding = "CACHE", id = "..." }]
 browser = { binding = "BROWSER" }
-triggers = { crons = ["0 6 * * 0"] }
+triggers = { crons = ["0 6 * * SUN"] }
 routes = [{ pattern = "og.docs.example.com/*", zone_name = "example.com" }]
 ```
 
@@ -190,6 +192,7 @@ one KV namespace safely.
 | `src/site-profile.ts` | Reads and validates per-install config; owns Slug ↔ URL mapping and Fallback Image URL |
 | `src/screenshot-store.ts` | Edge Cache → KV Cache lookup, write-back, keys, TTLs, `X-Cache` |
 | `src/render.ts` | Browser Rendering screenshot of one Slug |
+| `src/page-check.ts` | Pre-render check and browser response status validation |
 | `src/warmup.ts` | Sitemap → Slugs, renders cache misses |
 | `src/index.ts` | `fetch` and `scheduled` handlers wiring the modules |
 
@@ -249,7 +252,7 @@ Trigger it locally:
 
 ```bash
 npx wrangler dev --test-scheduled
-curl "http://localhost:8787/__scheduled?cron=0+6+*+*+0"
+curl "http://localhost:8787/__scheduled?cron=0+6+*+*+SUN"
 ```
 
 ---
@@ -260,6 +263,12 @@ If the screenshot fails (timeout, browser error), the worker proxies the static
 image at `FALLBACK_PATH` on the site (for example a Satori-generated
 `/og/{slug}.png`). Fallback responses are never cached. Without
 `FALLBACK_PATH`, the worker returns `502`.
+
+Pages that don't exist are never rendered when the pre-check detects them.
+The worker sends a `HEAD` request to the page (or `GET` if `HEAD` is not
+supported) and returns `404`, cached for 5 minutes, if the site responds `404`
+or `410`. The same applies if the browser subsequently receives either status;
+other browser navigation errors use the fallback.
 
 ---
 
