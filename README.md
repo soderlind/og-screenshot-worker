@@ -39,7 +39,7 @@ caches on two tiers and only renders on a full miss:
 
 ### Prerequisites
 
-- Cloudflare Workers Paid plan (required for Browser Rendering)
+- Cloudflare Workers account; see [Browser Run limits](https://developers.cloudflare.com/browser-run/limits/)
 - `wrangler` CLI installed
 
 ### 1. Create KV Namespace
@@ -68,6 +68,11 @@ For local development:
 ```bash
 npx wrangler dev
 ```
+
+Wrangler 4.143.0 does not emulate Quick Actions locally. To test screenshots
+with that version, temporarily add `remote = true` to `[browser]` in
+`wrangler.toml`; the KV binding remains local. Remote Browser Run usage is
+charged to your account.
 
 ### 4. Add DNS Record
 
@@ -103,7 +108,7 @@ const ogImage = `https://og.example.com/${ogSlug}.png`;
 ```toml
 name = "og-screenshot"
 main = "src/index.ts"
-compatibility_date = "2025-01-01"
+compatibility_date = "2026-03-24"
 compatibility_flags = ["nodejs_compat"]
 
 [vars]
@@ -132,6 +137,13 @@ zone_name = "example.com"
 | --- | --- | --- |
 | `BROWSER` | Browser | Cloudflare Browser Rendering binding |
 | `CACHE` | KV Namespace | Screenshot cache storage |
+
+On-demand screenshots use the Browser Run screenshot Quick Action, which
+requires a compatibility date of `2026-03-24` or later. Cache Warmup continues
+to reuse a Puppeteer browser session.
+
+The equivalent `cloudflare.config.ts` must be kept in sync with `wrangler.toml`
+when changing site variables, bindings, routes, or the warmup schedule.
 
 ### Variables
 
@@ -283,15 +295,14 @@ npm run typecheck
 
 ## Cost Considerations
 
-Browser Rendering is included in Workers Paid plan:
-
-- First 1,000 browser sessions/month free
-- $0.02 per additional session
-
-With 7-day caching, typical documentation sites stay well within $5 tier.
+Quick Actions are billed for browser time. Cache Warmup uses Browser Sessions,
+which are billed for browser time and concurrent browsers. See the current
+[Browser Run pricing](https://developers.cloudflare.com/browser-run/pricing/).
 
 ---
 
 ## AI Contribution Attribution
 
 Assisted-by: GitHub Copilot:GPT-5.3-Codex
+Assisted-by: Copilot SDK:gpt-6-luna
+Assisted-by: Copilot SDK:gpt-6.1-terra

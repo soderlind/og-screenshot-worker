@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 Entries before 1.0.0 predate versioning and are grouped by date.
 
+## [Unreleased]
+
+### Added
+
+- Cloudflare CLI configuration, including site variables and scheduled warmup.
+
+### Changed
+
+- On-demand screenshots use the Browser Run screenshot Quick Action; scheduled
+  warmup continues to reuse a Puppeteer browser session. Both use the same
+  User-Agent, and Quick Actions' output cache is disabled to keep cached images
+  consistent and fresh.
+- Updated the Workers compatibility date to `2026-03-24` for Quick Actions.
+- Updated Cloudflare Puppeteer and Workers types for the merged toolchain.
+
 ## [1.0.0] - 2026-11-10
 
 ### Added

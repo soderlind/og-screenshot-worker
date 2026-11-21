@@ -1,11 +1,11 @@
 import { loadSiteProfile, SiteProfileError, type SiteEnv, type SiteProfile } from './site-profile';
 import { createScreenshotStore } from './screenshot-store';
-import { renderScreenshot, withBrowser, type Browser } from './render';
+import { renderScreenshot, renderQuickAction, type Browser } from './render';
 import { collectSlugs, warmCache } from './warmup';
 import puppeteer from '@cloudflare/puppeteer';
 
 interface Env extends SiteEnv {
-  BROWSER: Fetcher;
+  BROWSER: BrowserRun;
   CACHE: KVNamespace;
 }
 
@@ -33,7 +33,7 @@ async function handleRequest(request: Request, env: Env, ctx: ExecutionContext, 
   if (hit) return hit;
 
   try {
-    const png = await withBrowser(env.BROWSER, (browser) => renderScreenshot(browser, profile, slug));
+    const png = await renderQuickAction(env.BROWSER, profile, slug);
     return await store.save(slug, png, url.origin);
   } catch (error) {
     console.error('Screenshot failed:', error);
