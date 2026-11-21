@@ -15,7 +15,9 @@ Entries before 1.0.0 predate versioning and are grouped by date.
 ### Changed
 
 - On-demand screenshots use the Browser Run screenshot Quick Action; scheduled
-  warmup continues to reuse a Puppeteer browser session.
+  warmup continues to reuse a Puppeteer browser session. Both use the same
+  User-Agent, and Quick Actions' output cache is disabled to keep cached images
+  consistent and fresh.
 - Updated the Workers compatibility date to `2026-03-24` for Quick Actions.
 - Updated Cloudflare Puppeteer and Workers types for the merged toolchain.
 

@@ -12,8 +12,11 @@ describe('renderQuickAction', () => {
     expect(quickAction).toHaveBeenCalledWith('screenshot', {
       url: 'https://example.com/about/',
       viewport: { width: 800, height: 400 },
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36',
       gotoOptions: { waitUntil: 'networkidle0', timeout: 15000 },
       waitForTimeout: 500,
+      cacheTTL: 0,
     });
   });
 
