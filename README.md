@@ -3,9 +3,13 @@
 
 Generate dynamic Open Graph images using Cloudflare Browser Rendering.
 
-This Cloudflare Worker takes live screenshots of pages on
-[example.com](https://example.com) and serves them as OG images for social
-media previews.
+This Cloudflare Worker takes live screenshots of pages on one site and serves
+them as OG images for social media previews.
+
+The worker is standalone: **one install per site**. Every site-specific value
+lives in `wrangler.toml`, so you can deploy it N times (one per site) without
+touching the code. Cache Warmup runs inside the worker on a Cron Trigger, so no
+CI is needed either.
 
 [How It Works](#how-it-works) · [Setup](#setup) ·
 [Configuration](#configuration) · [Usage](#usage) ·
@@ -24,9 +28,9 @@ caches on two tiers and only renders on a full miss:
 2. **KV cache** — On an edge miss, returns the screenshot from KV
   (durable, cross-colo) and warms the edge cache
 3. **Launches headless browser** — On a full miss, uses Cloudflare Browser Rendering
-4. **Takes screenshot** — Captures the page at 1200×630 pixels (OG standard)
-5. **Populates both caches** — Stores in KV for 7 days and in the edge cache
-  (non-blocking, via `waitUntil`)
+4. **Takes screenshot** — Captures the page at `VIEWPORT` (default 1200×630)
+5. **Populates both caches** — Stores in KV and in the edge cache for
+  `CACHE_TTL_SECONDS` (default 7 days)
 6. **Returns PNG** — Serves the image with proper headers
 
 ---
@@ -35,7 +39,7 @@ caches on two tiers and only renders on a full miss:
 
 ### Prerequisites
 
-- Cloudflare Workers Paid plan (required for Browser Rendering)
+- Cloudflare Workers account; see [Browser Run limits](https://developers.cloudflare.com/browser-run/limits/)
 - `wrangler` CLI installed
 
 ### 1. Create KV Namespace
@@ -47,7 +51,12 @@ npx wrangler kv namespace create CACHE
 
 Copy the returned `id` into `wrangler.toml`.
 
-### 2. Deploy Worker
+### 2. Configure the Site
+
+Set `SITE_ORIGIN`, the route, and any optional variables in `wrangler.toml`
+(see [Configuration](#configuration)).
+
+### 3. Deploy Worker
 
 ```bash
 npm install
@@ -60,7 +69,12 @@ For local development:
 npx wrangler dev
 ```
 
-### 3. Add DNS Record
+Wrangler 4.143.0 does not emulate Quick Actions locally. To test screenshots
+with that version, temporarily add `remote = true` to `[browser]` in
+`wrangler.toml`; the KV binding remains local. Remote Browser Run usage is
+charged to your account.
+
+### 4. Add DNS Record
 
 In Cloudflare Dashboard → DNS → Add record:
 
@@ -70,7 +84,7 @@ In Cloudflare Dashboard → DNS → Add record:
 
 This routes `og.example.com` to the worker.
 
-### 4. Update Head Component
+### 5. Update Head Component
 
 In your Astro site, set the og:image URL:
 
@@ -97,6 +111,11 @@ main = "src/index.ts"
 compatibility_date = "2026-03-24"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+SITE_ORIGIN = "https://example.com"
+PAGE_PATH = "/{slug}/"
+FALLBACK_PATH = "/og/{slug}.png"
+
 [browser]
 binding = "BROWSER"
 
@@ -104,26 +123,75 @@ binding = "BROWSER"
 binding = "CACHE"
 id = "your-kv-namespace-id"
 
+[triggers]
+crons = ["0 6 * * 0"]
+
 [[routes]]
 pattern = "og.example.com/*"
 zone_name = "example.com"
 ```
 
-### `src/index.ts`
-
-`src/index.ts` contains the worker code that handles requests, checks caches,
-and generates screenshots. It uses the Browser Run screenshot Quick Action to
-capture pages and serves them as PNG images. The Quick Action requires a
-compatibility date of `2026-03-24` or later.
-
-Source code is available at [GitHub](https://github.com/soderlind/og-screenshot-worker/blob/main/src/index.ts).
-
-### Environment Variables
+### Bindings
 
 | Binding | Type | Description |
 | --- | --- | --- |
 | `BROWSER` | Browser | Cloudflare Browser Rendering binding |
 | `CACHE` | KV Namespace | Screenshot cache storage |
+
+On-demand screenshots use the Browser Run screenshot Quick Action, which
+requires a compatibility date of `2026-03-24` or later. Cache Warmup continues
+to reuse a Puppeteer browser session.
+
+The equivalent `cloudflare.config.ts` must be kept in sync with `wrangler.toml`
+when changing site variables, bindings, routes, or the warmup schedule.
+
+### Variables
+
+| Variable | Default | Description |
+| --- | --- | --- |
+| `SITE_ORIGIN` | — (required) | Site to screenshot, e.g. `https://example.com` |
+| `PAGE_PATH` | `/{slug}/` | Slug → page path. `index` always maps to `/` |
+| `FALLBACK_PATH` | unset | Fallback Image path, e.g. `/og/{slug}.png`. Unset returns 502 on failure |
+| `SITEMAP_URL` | `SITE_ORIGIN/sitemap.xml` | Sitemap or sitemap index used by Cache Warmup |
+| `VIEWPORT` | `1200x630` | Screenshot size |
+| `CACHE_TTL_SECONDS` | `604800` | Screenshot lifetime across KV Cache and Edge Cache (min `60`) |
+| `BROWSER_MAX_AGE_SECONDS` | `86400` | `max-age` sent to browsers and crawlers |
+| `WARMUP_LIMIT` | `50` | Max renders per Cache Warmup run |
+
+Invalid configuration is rejected on the first request (HTTP 500 plus a log
+line naming the bad variable).
+
+### Multiple Sites
+
+Deploy one worker per site. Either copy `wrangler.toml` per site, or use
+[Wrangler environments](https://developers.cloudflare.com/workers/wrangler/environments/):
+
+```toml
+[env.docs]
+name = "og-screenshot-docs"
+vars = { SITE_ORIGIN = "https://docs.example.com" }
+kv_namespaces = [{ binding = "CACHE", id = "..." }]
+browser = { binding = "BROWSER" }
+triggers = { crons = ["0 6 * * 0"] }
+routes = [{ pattern = "og.docs.example.com/*", zone_name = "example.com" }]
+```
+
+```bash
+npx wrangler deploy --env docs
+```
+
+KV keys are scoped by site host (`og:{host}:{slug}`), so installs can share
+one KV namespace safely.
+
+### Source Layout
+
+| Module | Responsibility |
+| --- | --- |
+| `src/site-profile.ts` | Reads and validates per-install config; owns Slug ↔ URL mapping and Fallback Image URL |
+| `src/screenshot-store.ts` | Edge Cache → KV Cache lookup, write-back, keys, TTLs, `X-Cache` |
+| `src/render.ts` | Browser Rendering screenshot of one Slug |
+| `src/warmup.ts` | Sitemap → Slugs, renders cache misses |
+| `src/index.ts` | `fetch` and `scheduled` handlers wiring the modules |
 
 ---
 
@@ -166,63 +234,32 @@ curl -I https://og.example.com/about.png | grep -i X-Cache
 
 ## Cache Warmup
 
-A GitHub Action runs weekly to warm the OG image cache, ensuring fast social
-media previews.
+The worker warms its own cache from the site's sitemap on a Cron Trigger
+(`[triggers] crons` in `wrangler.toml`, weekly by default):
 
-### Automatic Warmup
+1. Fetches `SITEMAP_URL` (a sitemap index is followed one level deep)
+2. Maps each page URL on `SITE_ORIGIN` to a Slug using `PAGE_PATH`
+3. Skips Slugs already in KV; renders and stores the rest, up to `WARMUP_LIMIT`
+   per run, reusing one browser session
 
-The workflow runs every Sunday at 06:00 UTC:
+Warmup fills the KV Cache only. The Edge Cache fills on the first request in
+each colo.
 
-<!-- markdownlint-disable MD013 -->
-
-```yaml
-# .github/workflows/warm-og-cache.yml
-name: Warm OG Image Cache
-
-on:
-  schedule:
-    - cron: '0 6 * * 0'   # Weekly on Sunday at 06:00 UTC
-  workflow_dispatch:
-
-jobs:
-  warm-cache:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Fetch sitemap and warm OG cache
-        run: |
-          curl -s https://example.com/sitemap.xml | \
-            sed -n 's/.*<loc>https:\/\/example\.com\/\([^<]*\)<\/loc>.*/\1/p' | \
-            sed 's/\/$//' | \
-            while read slug; do
-              [ -z "$slug" ] && slug="index"
-              curl -s -o /dev/null \
-                "https://og.example.com/${slug}.png"
-            done
-```
-
-<!-- markdownlint-enable MD013 -->
-
-### Manual Warmup
-
-Trigger the workflow manually from GitHub Actions, or run locally:
+Trigger it locally:
 
 ```bash
-cat sitemap.xml | \
-  sed -n 's/.*<loc>https:\/\/example\.com\/\([^<]*\)<\/loc>.*/\1/p' | \
-  sed 's/\/$//' | \
-  while read slug; do
-    [ -z "$slug" ] && slug="index"
-    curl -s -o /dev/null -w "%{http_code} ${slug}\n" \
-      "https://og.example.com/${slug}.png"
-  done
+npx wrangler dev --test-scheduled
+curl "http://localhost:8787/__scheduled?cron=0+6+*+*+0"
 ```
 
 ---
 
 ## Fallback Behavior
 
-If screenshot fails (timeout, browser error), the worker falls back to the
-static Satori-generated OG image at `/og/{slug}.png`.
+If the screenshot fails (timeout, browser error), the worker proxies the static
+image at `FALLBACK_PATH` on the site (for example a Satori-generated
+`/og/{slug}.png`). Fallback responses are never cached. Without
+`FALLBACK_PATH`, the worker returns `502`.
 
 ---
 
@@ -240,26 +277,32 @@ The worker is easiest to maintain when these boundaries are kept explicit:
 If you refactor, preserve this order to avoid hidden cost increases in Browser
 Rendering usage.
 
+### Development
+
+```bash
+npm test          # vitest, in-memory KV and Edge Cache adapters
+npm run typecheck
+```
+
 ### Safe Refactor Checklist
 
 - Keep `X-Cache` semantics accurate (`HIT-EDGE`, `HIT-KV`, `MISS`)
 - Ensure browser instances are closed in success and failure paths
 - Avoid changing cache key format without a migration strategy
-- Validate slug parsing before constructing target URLs
+- Keep site-specific values in the Site Profile, never as constants
 
 ---
 
 ## Cost Considerations
 
-Browser Rendering is included in Workers Paid plan:
-
-- First 1,000 browser sessions/month free
-- $0.02 per additional session
-
-With 7-day caching, typical documentation sites stay well within $5 tier.
+Quick Actions are billed for browser time. Cache Warmup uses Browser Sessions,
+which are billed for browser time and concurrent browsers. See the current
+[Browser Run pricing](https://developers.cloudflare.com/browser-run/pricing/).
 
 ---
 
 ## AI Contribution Attribution
 
 Assisted-by: GitHub Copilot:GPT-5.3-Codex
+Assisted-by: Copilot SDK:gpt-6-luna
+Assisted-by: Copilot SDK:gpt-6.1-terra
